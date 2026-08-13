@@ -1,69 +1,139 @@
-import Image from "next/image";
+"use client";
 
-export default function Home() {
+import { useEffect, useMemo, useState } from "react";
+import RecipeCard from "@/components/RecipeCard";
+import { CardSkeletonGrid, EmptyState, ErrorState } from "@/components/States";
+import { RecipeSummary } from "@/lib/types";
+
+type Status = "loading" | "ready" | "error";
+
+export default function HomePage() {
+  const [search, setSearch] = useState("");
+  const [cuisine, setCuisine] = useState("");
+  const [dietTag, setDietTag] = useState("");
+  const [cuisines, setCuisines] = useState<string[]>([]);
+  const [dietTags, setDietTags] = useState<string[]>([]);
+  const [recipes, setRecipes] = useState<RecipeSummary[]>([]);
+  const [status, setStatus] = useState<Status>("loading");
+  const [reloadKey, setReloadKey] = useState(0);
+
+  useEffect(() => {
+    fetch("/api/filters")
+      .then((res) => (res.ok ? res.json() : Promise.reject()))
+      .then((data) => {
+        setCuisines(data.cuisines ?? []);
+        setDietTags(data.dietTags ?? []);
+      })
+      .catch(() => {});
+  }, [reloadKey]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- loading state for an in-flight fetch
+    setStatus("loading");
+    const params = new URLSearchParams();
+    if (search.trim()) params.set("search", search.trim());
+    if (cuisine) params.set("cuisine", cuisine);
+    if (dietTag) params.set("dietTag", dietTag);
+
+    const timeout = setTimeout(() => {
+      fetch(`/api/recipes?${params.toString()}`, { signal: controller.signal })
+        .then((res) => (res.ok ? res.json() : Promise.reject()))
+        .then((data) => {
+          setRecipes(data.recipes ?? []);
+          setStatus("ready");
+        })
+        .catch((err) => {
+          if (err?.name !== "AbortError") setStatus("error");
+        });
+    }, 200);
+
+    return () => {
+      controller.abort();
+      clearTimeout(timeout);
+    };
+  }, [search, cuisine, dietTag, reloadKey]);
+
+  const hasFilters = useMemo(() => Boolean(search || cuisine || dietTag), [search, cuisine, dietTag]);
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
+    <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
+      <section className="mb-10">
+        <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">Browse recipes</h1>
+        <p className="mt-2 max-w-2xl text-foreground-muted">
+          Every recipe here is a node in a graph, connected to its ingredients, cuisine and diet
+          tags. Filter below, or head to{" "}
+          <a href="/pantry" className="font-medium text-accent underline underline-offset-2">
+            What Can I Cook?
+          </a>{" "}
+          to search by what&apos;s in your kitchen.
+        </p>
+      </section>
+
+      <section className="mb-8 flex flex-col gap-3 sm:flex-row sm:items-center">
+        <input
+          type="search"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search recipes…"
+          className="w-full rounded-full border border-border bg-surface px-4 py-2.5 text-sm placeholder:text-foreground-muted/70 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20 sm:max-w-xs"
         />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+        <select
+          value={cuisine}
+          onChange={(e) => setCuisine(e.target.value)}
+          className="rounded-full border border-border bg-surface px-4 py-2.5 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
+        >
+          <option value="">All cuisines</option>
+          {cuisines.map((c) => (
+            <option key={c} value={c}>
+              {c}
+            </option>
+          ))}
+        </select>
+        <select
+          value={dietTag}
+          onChange={(e) => setDietTag(e.target.value)}
+          className="rounded-full border border-border bg-surface px-4 py-2.5 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
+        >
+          <option value="">Any diet</option>
+          {dietTags.map((d) => (
+            <option key={d} value={d}>
+              {d}
+            </option>
+          ))}
+        </select>
+        {hasFilters && (
+          <button
+            onClick={() => {
+              setSearch("");
+              setCuisine("");
+              setDietTag("");
+            }}
+            className="text-sm font-medium text-foreground-muted underline underline-offset-2 hover:text-accent"
           >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+            Clear filters
+          </button>
+        )}
+      </section>
+
+      {status === "loading" && <CardSkeletonGrid />}
+
+      {status === "error" && <ErrorState onRetry={() => setReloadKey((k) => k + 1)} />}
+
+      {status === "ready" && recipes.length === 0 && (
+        <EmptyState
+          title="No recipes match those filters"
+          description="Try a different search term or clear your filters."
+        />
+      )}
+
+      {status === "ready" && recipes.length > 0 && (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {recipes.map((recipe) => (
+            <RecipeCard key={recipe.id} recipe={recipe} />
+          ))}
         </div>
-      </main>
+      )}
     </div>
   );
 }
